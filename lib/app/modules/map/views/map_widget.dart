@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'dart:math' as math;
 import '../bloc/map_bloc.dart';
 import '../models/get_direction_model.dart';
 
@@ -15,12 +16,8 @@ class MapWidget extends StatefulWidget {
 
 class _MapWidgetState extends State<MapWidget> {
   MapLibreMapController? _mapController;
-  LatLng? _startPoint;
-  LatLng? _endPoint;
-  bool _isStartPointSet = false;
   bool _isMapReady = false;
   final String _apiKey = 'bpk.Lrp6rRIjOpVullIjTRPevEl-2uZPMgMQhnWnEHSxrGUG';
-  bool _isDisposed = false;
 
   @override
   void initState() {
@@ -30,117 +27,108 @@ class _MapWidgetState extends State<MapWidget> {
 
   @override
   void dispose() {
-    _isDisposed = true;
-    if (_mapController != null) {
-      _mapController!.dispose();
-      _mapController = null;
-    }
+    _mapController?.dispose();
     super.dispose();
   }
 
   Future<void> _initializeMap() async {
-    if (_isDisposed) return;
     context.read<MapBloc>().add(const InitializeMap());
-    await _getCurrentLocation();
+    await _requestLocationPermission();
+  }
+
+  Future<void> _requestLocationPermission() async {
+    try {
+      final status = await Permission.location.request();
+      if (status.isGranted) {
+        await _getCurrentLocation();
+      } else {
+        _showMessage('Location permission is required to use the map');
+      }
+    } catch (e) {
+      _showMessage('Error requesting location permission');
+    }
   }
 
   Future<void> _getCurrentLocation() async {
     try {
-      final status = await Permission.location.request();
-      if (status.isGranted) {
-        final position = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high,
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      final location = LatLng(position.latitude, position.longitude);
+      context.read<MapBloc>().add(UpdateCurrentLocation(location));
+
+      if (_isMapReady && _mapController != null) {
+        await _mapController!.animateCamera(
+          CameraUpdate.newLatLngZoom(location, 15.0),
         );
-        setState(() {
-          _startPoint = LatLng(position.latitude, position.longitude);
-          _isStartPointSet = true;
-        });
-        if (_isMapReady && _mapController != null) {
-          await _mapController!.animateCamera(
-            CameraUpdate.newLatLngZoom(_startPoint!, 15.0),
-          );
-          _addMarkers();
-        }
-      } else {
-        debugPrint('Location permission denied');
       }
     } catch (e) {
-      debugPrint('Error getting location: $e');
+      _showMessage('Error getting location: ${e.toString()}');
     }
   }
 
-  void _onMapTap(LatLng coordinates) {
-    if (!_isStartPointSet || !_isMapReady) return;
-
-    setState(() {
-      _endPoint = coordinates;
-    });
-
-    _addMarkers();
-    _fetchDirections();
-  }
-
-  void _fetchDirections() {
-    if (_startPoint == null || _endPoint == null) return;
-
-    context.read<MapBloc>().add(GetDirectionData(
-          startLat: _startPoint!.latitude,
-          startLng: _startPoint!.longitude,
-          endLat: _endPoint!.latitude,
-          endLng: _endPoint!.longitude,
-        ));
-  }
-
   void _onMapCreated(MapLibreMapController controller) {
-    if (_isDisposed) return;
     setState(() {
       _mapController = controller;
       _isMapReady = true;
     });
 
-    if (_startPoint != null) {
+    final currentLocation = context.read<MapBloc>().state.currentLocation;
+    if (currentLocation != null) {
       _mapController?.animateCamera(
-        CameraUpdate.newLatLngZoom(_startPoint!, 15.0),
+        CameraUpdate.newLatLngZoom(currentLocation, 15.0),
       );
-      _addMarkers();
     }
   }
 
-  Future<void> _addMarkers() async {
-    if (_mapController == null || !_isMapReady || _isDisposed) return;
+  void _onMapTap(LatLng coordinates) {
+    if (!_isMapReady) {
+      _showMessage('Please wait for the map to initialize');
+      return;
+    }
 
-    try {
-      await _mapController!.clearSymbols();
+    final currentLocation = context.read<MapBloc>().state.currentLocation;
+    if (currentLocation == null) {
+      _showMessage('Please wait for current location');
+      return;
+    }
 
-      if (_startPoint != null) {
-        await _mapController!.addSymbol(
-          SymbolOptions(
-            geometry: _startPoint!,
-            iconImage: 'marker',
-            iconSize: 1.5,
-          ),
-        );
-      }
+    context.read<MapBloc>().add(UpdateDestination(coordinates));
+  }
 
-      if (_endPoint != null) {
-        await _mapController!.addSymbol(
-          SymbolOptions(
-            geometry: _endPoint!,
-            iconImage: 'marker',
-            iconSize: 1.5,
-          ),
-        );
-      }
-    } catch (e) {
-      debugPrint('Error adding markers: $e');
+  void _showMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  Future<void> _clearMap() async {
+    if (_mapController == null || !_isMapReady) return;
+
+    await _mapController!.clearLines();
+    await _mapController!.clearSymbols();
+    context.read<MapBloc>().add(const ClearPath());
+
+    final currentLocation = context.read<MapBloc>().state.currentLocation;
+    if (currentLocation != null) {
+      await _mapController!.addSymbol(
+        SymbolOptions(
+          geometry: currentLocation,
+          iconImage: 'marker',
+          iconSize: 1.5,
+          iconColor: '#4CAF50',
+        ),
+      );
+      await _mapController!.animateCamera(
+        CameraUpdate.newLatLngZoom(currentLocation, 15.0),
+      );
     }
   }
 
   void _drawRoute(List<DirectionData> directionData) {
-    if (_mapController == null ||
-        !_isMapReady ||
-        _isDisposed ||
-        directionData.isEmpty) return;
+    if (_mapController == null || !_isMapReady || directionData.isEmpty) return;
 
     try {
       _mapController!.clearLines();
@@ -150,13 +138,44 @@ class _MapWidgetState extends State<MapWidget> {
       _mapController!.addLine(
         LineOptions(
           geometry: _decodePolyline(route.encodedPolyline),
-          lineColor: '#FF0000',
-          lineWidth: 3.0,
+          lineColor: '#2196F3',
+          lineWidth: 4.0,
+          lineOpacity: 0.8,
         ),
       );
+
+      _fitRouteToScreen();
     } catch (e) {
-      debugPrint('Error drawing route: $e');
+      _showMessage('Error drawing route: ${e.toString()}');
     }
+  }
+
+  void _fitRouteToScreen() {
+    final state = context.read<MapBloc>().state;
+    if (state.currentLocation == null || state.destination == null) return;
+
+    final bounds = LatLngBounds(
+      southwest: LatLng(
+        math.min(state.currentLocation!.latitude, state.destination!.latitude),
+        math.min(
+            state.currentLocation!.longitude, state.destination!.longitude),
+      ),
+      northeast: LatLng(
+        math.max(state.currentLocation!.latitude, state.destination!.latitude),
+        math.max(
+            state.currentLocation!.longitude, state.destination!.longitude),
+      ),
+    );
+
+    _mapController!.animateCamera(
+      CameraUpdate.newLatLngBounds(
+        bounds,
+        left: 50,
+        right: 50,
+        top: 50,
+        bottom: 50,
+      ),
+    );
   }
 
   List<LatLng> _decodePolyline(String encoded) {
@@ -189,12 +208,46 @@ class _MapWidgetState extends State<MapWidget> {
     return poly;
   }
 
+  void _updateMarkers() async {
+    if (_mapController == null || !_isMapReady) return;
+
+    await _mapController!.clearSymbols();
+    final state = context.read<MapBloc>().state;
+
+    if (state.currentLocation != null) {
+      await _mapController!.addSymbol(
+        SymbolOptions(
+          geometry: state.currentLocation!,
+          iconImage: 'marker',
+          iconSize: 1.5,
+          iconColor: '#4CAF50',
+        ),
+      );
+    }
+
+    if (state.destination != null) {
+      await _mapController!.addSymbol(
+        SymbolOptions(
+          geometry: state.destination!,
+          iconImage: 'marker',
+          iconSize: 1.5,
+          iconColor: '#F44336',
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return BlocConsumer<MapBloc, MapState>(
       listener: (context, state) {
         if (state.status == MapStatus.loaded) {
-          _drawRoute(state.directionData);
+          _updateMarkers();
+          if (state.hasRoute) {
+            _drawRoute(state.directionData);
+          }
+        } else if (state.status == MapStatus.error) {
+          _showMessage(state.error);
         }
       },
       builder: (context, state) {
@@ -202,9 +255,9 @@ class _MapWidgetState extends State<MapWidget> {
           children: [
             MapLibreMap(
               onMapCreated: _onMapCreated,
-              onMapClick: (_, LatLng coordinates) => _onMapTap(coordinates),
+              onMapClick: (_, coordinates) => _onMapTap(coordinates),
               initialCameraPosition: CameraPosition(
-                target: _startPoint ??
+                target: state.currentLocation ??
                     const LatLng(27.717728723291803, 85.32784938812257),
                 zoom: 12.0,
               ),
@@ -212,39 +265,51 @@ class _MapWidgetState extends State<MapWidget> {
                   'https://api.baato.io/api/v1/styles/breeze?key=$_apiKey',
             ),
             if (state.status == MapStatus.loading)
-              const Center(
-                child: CircularProgressIndicator(),
-              ),
-            if (state.status == MapStatus.error)
-              Center(
-                child: Text(
-                  state.error,
-                  style: const TextStyle(color: Colors.red),
+              Container(
+                color: Colors.black26,
+                child: const Center(
+                  child: CircularProgressIndicator(),
                 ),
               ),
-            if (!_isStartPointSet)
-              const Center(
-                child: Text(
-                  'Waiting for location permission...',
-                  style: TextStyle(color: Colors.black),
+            if (state.currentLocation == null)
+              Container(
+                color: Colors.black26,
+                child: const Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(height: 16),
+                      Text(
+                        'Getting your location...',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             Positioned(
               right: 16,
               bottom: 16,
-              child: FloatingActionButton(
-                onPressed: () {
-                  if (_mapController != null) {
-                    _mapController!.clearLines();
-                    _mapController!.clearSymbols();
-                    setState(() {
-                      _endPoint = null;
-                    });
-                    context.read<MapBloc>().add(const ClearPath());
-                  }
-                },
-                backgroundColor: Colors.white,
-                child: const Icon(Icons.clear, color: Colors.black),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  FloatingActionButton(
+                    onPressed: _getCurrentLocation,
+                    backgroundColor: Colors.white,
+                    child: const Icon(Icons.my_location, color: Colors.black),
+                  ),
+                  const SizedBox(height: 8),
+                  FloatingActionButton(
+                    onPressed: _clearMap,
+                    backgroundColor: Colors.white,
+                    child: const Icon(Icons.clear, color: Colors.black),
+                  ),
+                ],
               ),
             ),
           ],

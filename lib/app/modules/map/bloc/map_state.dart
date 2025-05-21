@@ -4,50 +4,54 @@ enum MapStatus { initial, loading, loaded, error }
 
 class MapState extends Equatable {
   final List<DirectionData> directionData;
-  final double? startLat;
-  final double? startLng;
-  final double? endLat;
-  final double? endLng;
+  final LatLng? currentLocation;
+  final LatLng? destination;
   final MapStatus status;
   final String error;
 
   const MapState({
     this.directionData = const [],
-    this.startLat,
-    this.startLng,
-    this.endLat,
-    this.endLng,
+    this.currentLocation,
+    this.destination,
     this.status = MapStatus.initial,
     this.error = '',
   });
 
   MapState copyWith({
     List<DirectionData>? directionData,
-    double? startLat,
-    double? startLng,
-    double? endLat,
-    double? endLng,
+    LatLng? currentLocation,
+    LatLng? destination,
     MapStatus? status,
     String? error,
   }) {
     return MapState(
       directionData: directionData ?? this.directionData,
-      startLat: startLat ?? this.startLat,
-      startLng: startLng ?? this.startLng,
-      endLat: endLat ?? this.endLat,
-      endLng: endLng ?? this.endLng,
+      currentLocation: currentLocation ?? this.currentLocation,
+      destination: destination ?? this.destination,
       status: status ?? this.status,
       error: error ?? this.error,
     );
   }
 
+  MapState clearRoute() {
+    return MapState(
+      directionData: const [],
+      currentLocation: currentLocation,
+      destination: null,
+      status: MapStatus.loaded,
+      error: '',
+    );
+  }
+
+  bool get hasValidLocations => currentLocation != null && destination != null;
+
+  bool get hasRoute => directionData.isNotEmpty;
+
   @override
   List<Object?> get props => [
         directionData,
-        startLat,
-        startLng,
-        endLat,
-        endLng,
+        currentLocation,
+        destination,
         status,
         error,
       ];

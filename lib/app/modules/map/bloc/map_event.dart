@@ -4,36 +4,35 @@ class MapEvent extends Equatable {
   const MapEvent();
 
   @override
-  List<Object> get props => [];
+  List<Object?> get props => [];
 }
 
-final class InitializeMap extends MapEvent {
+class InitializeMap extends MapEvent {
   const InitializeMap();
+}
+
+class UpdateCurrentLocation extends MapEvent {
+  final LatLng location;
+
+  const UpdateCurrentLocation(this.location);
 
   @override
-  List<Object> get props => [];
+  List<Object> get props => [location];
+}
+
+class UpdateDestination extends MapEvent {
+  final LatLng location;
+
+  const UpdateDestination(this.location);
+
+  @override
+  List<Object> get props => [location];
 }
 
 class GetDirectionData extends MapEvent {
-  final double startLat;
-  final double startLng;
-  final double endLat;
-  final double endLng;
-
-  const GetDirectionData({
-    required this.startLat,
-    required this.startLng,
-    required this.endLat,
-    required this.endLng,
-  });
-
-  @override
-  List<Object> get props => [startLat, startLng, endLat, endLng];
+  const GetDirectionData();
 }
 
 class ClearPath extends MapEvent {
   const ClearPath();
-
-  @override
-  List<Object> get props => [];
 }
