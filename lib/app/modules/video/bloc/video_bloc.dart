@@ -1,6 +1,7 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:video_player/video_player.dart';
 import 'package:equatable/equatable.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/video_model.dart';
 
 part 'video_event.dart';
@@ -10,6 +11,9 @@ class VideoBloc extends Bloc<VideoEvent, VideoState> {
   VideoPlayerController? controller;
   late List<VideoModel> videos;
   bool hasCompletedThirdVideo = false;
+  static const String _videoIndexKey = 'video_index';
+  static const String _videoPositionKey = 'video_position';
+  static const String _hasCompletedThirdVideoKey = 'completed_third_video';
 
   VideoBloc() : super(const VideoState()) {
     on<InitializeVideo>(_onInitializeVideo);
@@ -171,13 +175,62 @@ class VideoBloc extends Bloc<VideoEvent, VideoState> {
     }
   }
 
-  void _onSavePlaybackState(SavePlaybackState event, Emitter<VideoState> emit) {
-    // Implement save playback state logic if needed
+  Future<void> _onSavePlaybackState(
+    SavePlaybackState event,
+    Emitter<VideoState> emit,
+  ) async {
+    try {
+      if (controller == null || !controller!.value.isInitialized) return;
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_videoIndexKey, state.currentVideoIndex);
+      await prefs.setInt(
+        _videoPositionKey,
+        controller!.value.position.inMilliseconds,
+      );
+      await prefs.setBool(_hasCompletedThirdVideoKey, hasCompletedThirdVideo);
+    } catch (e) {
+      add(VideoError('Error saving playback state: ${e.toString()}'));
+    }
   }
 
-  void _onRestorePlaybackState(
-      RestorePlaybackState event, Emitter<VideoState> emit) {
-    // Implement restore playback state logic if needed
+  Future<void> _onRestorePlaybackState(
+    RestorePlaybackState event,
+    Emitter<VideoState> emit,
+  ) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      hasCompletedThirdVideo =
+          prefs.getBool(_hasCompletedThirdVideoKey) ?? false;
+
+      final savedIndex = prefs.getInt(_videoIndexKey);
+      if (savedIndex == null || savedIndex >= videos.length) {
+        add(const InitializeVideo());
+        return;
+      }
+
+      final savedPosition = prefs.getInt(_videoPositionKey);
+      if (savedPosition == null) {
+        add(const InitializeVideo());
+        return;
+      }
+
+      final savedVideo = videos[savedIndex];
+      await _initializeVideoController(savedVideo.path);
+
+      emit(state.copyWith(
+        status: VideoStatus.paused,
+        currentVideo: savedVideo,
+        currentVideoIndex: savedIndex,
+        totalDuration: controller!.value.duration,
+      ));
+
+      await controller!.seekTo(Duration(milliseconds: savedPosition));
+    } catch (e) {
+      add(VideoError('Error restoring playback state: ${e.toString()}'));
+      add(const InitializeVideo());
+    }
   }
 
   void _onVideoError(VideoError event, Emitter<VideoState> emit) {

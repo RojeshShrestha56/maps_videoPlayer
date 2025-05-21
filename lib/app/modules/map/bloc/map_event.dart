@@ -9,6 +9,9 @@ class MapEvent extends Equatable {
 
 class InitializeMap extends MapEvent {
   const InitializeMap();
+
+  @override
+  List<Object> get props => [];
 }
 
 class UpdateCurrentLocation extends MapEvent {
@@ -31,8 +34,14 @@ class UpdateDestination extends MapEvent {
 
 class GetDirectionData extends MapEvent {
   const GetDirectionData();
+
+  @override
+  List<Object> get props => [];
 }
 
 class ClearPath extends MapEvent {
   const ClearPath();
+
+  @override
+  List<Object> get props => [];
 }

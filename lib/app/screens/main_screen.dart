@@ -27,9 +27,7 @@ class MainScreen extends StatelessWidget {
         ),
         body: const TabBarView(
           children: [
-            // Map Tab
             MapWidget(),
-            // Video Tab
             VideoPlayerWidget(),
           ],
         ),
