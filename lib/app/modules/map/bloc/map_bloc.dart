@@ -215,36 +215,52 @@ class MapBloc extends Bloc<MapEvent, MapState> {
     UpdateDestination event,
     Emitter<MapState> emit,
   ) async {
+    print('Handling UpdateDestination event');
+    print('Current location: ${state.currentLocation}');
+    print('New destination: ${event.location}');
+
     emit(state.copyWith(
       destination: event.location,
-      status: MapStatus.loaded,
+      status: MapStatus.loading,
     ));
 
-    if (state.hasValidLocations) {
-      try {
-        // Get directions first
-        final response = await _apiProvider.getDirections(
-          points: [
-            [state.currentLocation!.latitude, state.currentLocation!.longitude],
-            [event.location.latitude, event.location.longitude],
-          ],
-        );
-
-        emit(state.copyWith(
-          directionData: response,
-          status: MapStatus.loaded,
-        ));
-
-        // Then update markers and draw route
-        add(const UpdateMapMarkers());
-        add(const DrawRoute());
-        add(const FitMapToRoute());
-      } catch (e) {
-        emit(state.copyWith(
-          status: MapStatus.error,
-          error: 'Error getting directions: ${e.toString()}',
-        ));
+    if (!state.hasValidLocations) {
+      print(
+          'Missing valid locations. Current: ${state.currentLocation}, Destination: ${state.destination}');
+      if (state.currentLocation == null) {
+        // Try to get current location if not available
+        add(const RequestLocationPermission());
       }
+      return;
+    }
+
+    try {
+      print(
+          'Getting directions from ${state.currentLocation} to ${event.location}');
+      // Get directions first
+      final response = await _apiProvider.getDirections(
+        points: [
+          [state.currentLocation!.latitude, state.currentLocation!.longitude],
+          [event.location.latitude, event.location.longitude],
+        ],
+      );
+
+      print('Got direction response: ${response.length} routes');
+      emit(state.copyWith(
+        directionData: response,
+        status: MapStatus.loaded,
+      ));
+
+      // Then update markers and draw route
+      add(const UpdateMapMarkers());
+      add(const DrawRoute());
+      add(const FitMapToRoute());
+    } catch (e) {
+      print('Error getting directions: $e');
+      emit(state.copyWith(
+        status: MapStatus.error,
+        error: 'Error getting directions: ${e.toString()}',
+      ));
     }
   }
 
@@ -328,15 +344,22 @@ class MapBloc extends Bloc<MapEvent, MapState> {
     if (state.mapController == null ||
         !state.isMapReady ||
         state.directionData.isEmpty) {
+      print(
+          'Cannot draw route: controller=${state.mapController != null}, isMapReady=${state.isMapReady}, hasDirections=${state.directionData.isNotEmpty}');
       return;
     }
 
     try {
       await state.mapController!.clearLines();
       final route = state.directionData.first;
-      if (route.encodedPolyline.isEmpty) return;
+      if (route.encodedPolyline.isEmpty) {
+        print('Empty polyline received from API');
+        return;
+      }
 
+      print('Decoding polyline: ${route.encodedPolyline}');
       final List<LatLng> points = _decodePolyline(route.encodedPolyline);
+      print('Decoded ${points.length} points');
 
       await state.mapController!.addLine(
         LineOptions(
@@ -346,7 +369,9 @@ class MapBloc extends Bloc<MapEvent, MapState> {
           lineOpacity: 0.8,
         ),
       );
+      print('Route line added to map');
     } catch (e) {
+      print('Error drawing route: $e');
       emit(state.copyWith(
         status: MapStatus.error,
         error: 'Error drawing route: ${e.toString()}',

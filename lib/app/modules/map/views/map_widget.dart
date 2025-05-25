@@ -17,8 +17,40 @@ class MapWidget extends StatelessWidget {
 
   Future<Uint8List> _loadDestinationImage() async {
     final ByteData data =
-    await rootBundle.load('assets/images/destination.jpg');
+        await rootBundle.load('assets/images/destination.jpg');
     return data.buffer.asUint8List();
+  }
+
+  Future<Uint8List> _loadCurrentLocationImage() async {
+    // Create a simple blue dot image programmatically
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    final size = Size(24, 24);
+    final paint = Paint()
+      ..color = Colors.blue
+      ..style = PaintingStyle.fill;
+
+    // Draw outer circle
+    canvas.drawCircle(
+      Offset(size.width / 2, size.height / 2),
+      size.width / 2,
+      paint..color = Colors.blue.withOpacity(0.2),
+    );
+
+    // Draw inner circle
+    canvas.drawCircle(
+      Offset(size.width / 2, size.height / 2),
+      size.width / 4,
+      paint..color = Colors.blue,
+    );
+
+    final picture = recorder.endRecording();
+    final img = await picture.toImage(
+      size.width.toInt(),
+      size.height.toInt(),
+    );
+    final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
+    return byteData!.buffer.asUint8List();
   }
 
   @override
@@ -34,13 +66,30 @@ class MapWidget extends StatelessWidget {
           children: [
             MapLibreMap(
               onMapCreated: (controller) async {
-                await controller.addImage(
-                  "destination",
-                  await _loadDestinationImage(),
-                );
+                print('Map controller created');
                 context.read<MapBloc>()..add(MapControllerSet(controller));
               },
+              onStyleLoadedCallback: () async {
+                print('Map style loaded');
+                final controller = context.read<MapBloc>().state.mapController;
+                if (controller != null) {
+                  try {
+                    await controller.addImage(
+                      "destination",
+                      await _loadDestinationImage(),
+                    );
+                    await controller.addImage(
+                      "current-location",
+                      await _loadCurrentLocationImage(),
+                    );
+                    print('Map images added successfully');
+                  } catch (e) {
+                    print('Error adding map images: $e');
+                  }
+                }
+              },
               onMapClick: (_, coordinates) {
+                print('Map clicked at: $coordinates');
                 context.read<MapBloc>().add(UpdateDestination(coordinates));
               },
               initialCameraPosition: CameraPosition(
@@ -54,7 +103,8 @@ class MapWidget extends StatelessWidget {
               myLocationRenderMode: MyLocationRenderMode.gps,
               myLocationTrackingMode: MyLocationTrackingMode.trackingGps,
             ),
-            if (state.status == MapStatus.loading && state.currentLocation == null)
+            if (state.status == MapStatus.loading &&
+                state.currentLocation == null)
               Container(
                 color: Colors.black26,
                 child: Center(
