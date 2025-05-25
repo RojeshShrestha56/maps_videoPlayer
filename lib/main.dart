@@ -22,7 +22,7 @@ class MyApp extends StatelessWidget {
         BlocProvider(
           create: (context) => MapBloc(apiProvider: apiProvider),
         ),
-        BlocProvider(create: (context) => VideoBloc(apiProvider: apiProvider)),
+        BlocProvider(create: (context) => VideoBloc()),
       ],
       child: MaterialApp(
         title: 'Baato Maps Demo',

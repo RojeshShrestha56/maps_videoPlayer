@@ -16,15 +16,9 @@ class MapWidget extends StatelessWidget {
   }
 
   Future<Uint8List> _loadDestinationImage() async {
-    final ByteData data =
-        await rootBundle.load('assets/images/destination.jpg');
-    return data.buffer.asUint8List();
-  }
-
-  Future<Uint8List> _loadCurrentLocationImage() async {
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
-    const size = Size(24, 24);
+    const size = Size(48, 48);
     final paint = Paint()
       ..color = Colors.blue.withValues(alpha: 0.2)
       ..style = PaintingStyle.fill;
@@ -70,10 +64,10 @@ class MapWidget extends StatelessWidget {
                 final controller = context.read<MapBloc>().state.mapController;
                 if (controller != null) {
                   try {
-                    await controller.addImage(
-                      "current_location",
-                      await _loadCurrentLocationImage(),
-                    );
+                    // await controller.addImage(
+                    //   "current_location",
+                    //   await _loadCurrentLocationImage(),
+                    // );
                     await controller.addImage(
                       "destination",
                       await _loadDestinationImage(),
@@ -94,9 +88,9 @@ class MapWidget extends StatelessWidget {
               ),
               styleString:
                   'https://api.baato.io/api/v1/styles/breeze?key=${ApiEndpoint.apiKey}',
-              myLocationEnabled: false,
-              myLocationRenderMode: MyLocationRenderMode.normal,
-              myLocationTrackingMode: MyLocationTrackingMode.none,
+              myLocationEnabled: true,
+              myLocationRenderMode: MyLocationRenderMode.gps,
+              myLocationTrackingMode: MyLocationTrackingMode.trackingGps,
             ),
             if (state.status == MapStatus.loading &&
                 state.currentLocation == null)

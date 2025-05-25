@@ -114,8 +114,6 @@ class MapBloc extends Bloc<MapEvent, MapState> {
           return;
         }
       }
-
-      // Double check permission before getting location
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.unableToDetermine) {
@@ -181,10 +179,7 @@ class MapBloc extends Bloc<MapEvent, MapState> {
     ));
 
     if (state.mapController != null) {
-      // Update markers to show both current location and destination
       add(const UpdateMapMarkers());
-
-      // Only animate camera if we don't have a destination yet
       if (state.destination == null) {
         await state.mapController!.animateCamera(
           CameraUpdate.newLatLngZoom(event.location, 15.0),

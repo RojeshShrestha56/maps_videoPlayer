@@ -4,31 +4,28 @@ import 'package:equatable/equatable.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/widgets.dart';
 import '../models/video_model.dart';
-import '../../../data/services/api_provider.dart';
 
 part 'video_event.dart';
+
 part 'video_state.dart';
 
 class VideoBloc extends Bloc<VideoEvent, VideoState>
     with WidgetsBindingObserver {
-  final ApiProvider _apiProvider;
-
-  VideoBloc({required ApiProvider apiProvider})
-      : _apiProvider = apiProvider,
-        super(VideoState(videos: [
-          const VideoModel(
+  VideoBloc()
+      : super(const VideoState(videos: [
+          VideoModel(
             title: 'First Video',
             path: 'assets/videos/video1.mp4',
             duration: Duration(seconds: 30),
             pauseAt: Duration(seconds: 15),
           ),
-          const VideoModel(
+          VideoModel(
             title: 'Second Video',
             path: 'assets/videos/video2.mp4',
             duration: Duration(seconds: 30),
             pauseAt: Duration(seconds: 20),
           ),
-          const VideoModel(
+          VideoModel(
             title: 'Third Video',
             path: 'assets/videos/video3.mp4',
             duration: Duration(seconds: 30),
@@ -93,8 +90,9 @@ class VideoBloc extends Bloc<VideoEvent, VideoState>
   }
 
   void _videoListener(Emitter<VideoState> emit) {
-    if (state.controller == null || !state.controller!.value.isInitialized)
+    if (state.controller == null || !state.controller!.value.isInitialized) {
       return;
+    }
 
     add(UpdateVideoPosition(
       position: state.controller!.value.position,
@@ -117,8 +115,9 @@ class VideoBloc extends Bloc<VideoEvent, VideoState>
   }
 
   void _onPlayVideo(PlayVideo event, Emitter<VideoState> emit) {
-    if (state.controller == null || !state.controller!.value.isInitialized)
+    if (state.controller == null || !state.controller!.value.isInitialized) {
       return;
+    }
 
     if (state.atPausePoint) {
       return;
@@ -129,15 +128,17 @@ class VideoBloc extends Bloc<VideoEvent, VideoState>
   }
 
   void _onPauseVideo(PauseVideo event, Emitter<VideoState> emit) {
-    if (state.controller == null || !state.controller!.value.isInitialized)
+    if (state.controller == null || !state.controller!.value.isInitialized) {
       return;
+    }
     state.controller!.pause();
     emit(state.copyWith(status: VideoStatus.paused));
   }
 
   void _onSeekVideo(SeekVideo event, Emitter<VideoState> emit) {
-    if (state.controller == null || !state.controller!.value.isInitialized)
+    if (state.controller == null || !state.controller!.value.isInitialized) {
       return;
+    }
     state.controller!.seekTo(event.position);
   }
 
@@ -212,8 +213,9 @@ class VideoBloc extends Bloc<VideoEvent, VideoState>
     Emitter<VideoState> emit,
   ) async {
     try {
-      if (state.controller == null || !state.controller!.value.isInitialized)
+      if (state.controller == null || !state.controller!.value.isInitialized) {
         return;
+      }
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(VideoState.videoIndexKey, state.currentVideoIndex);
