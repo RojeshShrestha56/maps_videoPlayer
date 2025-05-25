@@ -8,6 +8,8 @@ class MapState extends Equatable {
   final LatLng? destination;
   final MapStatus status;
   final String error;
+  final MapLibreMapController? mapController;
+  final bool isMapReady;
 
   const MapState({
     this.directionData = const [],
@@ -15,6 +17,8 @@ class MapState extends Equatable {
     this.destination,
     this.status = MapStatus.initial,
     this.error = '',
+    this.mapController,
+    this.isMapReady = false,
   });
 
   MapState copyWith({
@@ -23,6 +27,8 @@ class MapState extends Equatable {
     LatLng? destination,
     MapStatus? status,
     String? error,
+    MapLibreMapController? mapController,
+    bool? isMapReady,
   }) {
     return MapState(
       directionData: directionData ?? this.directionData,
@@ -30,6 +36,8 @@ class MapState extends Equatable {
       destination: destination ?? this.destination,
       status: status ?? this.status,
       error: error ?? this.error,
+      mapController: mapController ?? this.mapController,
+      isMapReady: isMapReady ?? this.isMapReady,
     );
   }
 
@@ -40,6 +48,8 @@ class MapState extends Equatable {
       destination: null,
       status: MapStatus.loaded,
       error: '',
+      mapController: mapController,
+      isMapReady: isMapReady,
     );
   }
 
@@ -54,5 +64,7 @@ class MapState extends Equatable {
         destination,
         status,
         error,
+        mapController,
+        isMapReady,
       ];
 }

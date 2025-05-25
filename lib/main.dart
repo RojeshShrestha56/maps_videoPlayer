@@ -6,6 +6,8 @@ import 'app/modules/video/bloc/video_bloc.dart';
 import 'app/screens/main_screen.dart';
 
 void main() {
+  // Ensure Flutter bindings are initialized
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const MyApp());
 }
 
@@ -14,10 +16,12 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final apiProvider = ApiProvider();
+
     return MultiBlocProvider(
       providers: [
         BlocProvider(
-          create: (context) => MapBloc(apiProvider: ApiProvider()),
+          create: (context) => MapBloc(apiProvider: apiProvider),
         ),
         BlocProvider(create: (context) => VideoBloc()),
       ],

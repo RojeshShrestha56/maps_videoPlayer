@@ -4,7 +4,6 @@ import '../providers/network/api_endpoint.dart';
 
 class ApiProvider {
   final Dio _dio;
-  final String _apiKey = 'bpk.Lrp6rRIjOpVullIjTRPevEl-2uZPMgMQhnWnEHSxrGUG';
 
   ApiProvider() : _dio = Dio();
 
@@ -18,7 +17,7 @@ class ApiProvider {
       final response = await _dio.get(
         '${ApiEndpoint.baseUrl}directions',
         queryParameters: {
-          'key': _apiKey,
+          'key': ApiEndpoint.apiKey,
           'points[]': pointsParam,
           'mode': 'car',
         },

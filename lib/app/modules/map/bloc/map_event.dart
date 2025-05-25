@@ -45,3 +45,40 @@ class ClearPath extends MapEvent {
   @override
   List<Object> get props => [];
 }
+
+class MapControllerSet extends MapEvent {
+  final MapLibreMapController controller;
+
+  const MapControllerSet(this.controller);
+
+  @override
+  List<Object> get props => [controller];
+}
+
+class UpdateMapMarkers extends MapEvent {
+  const UpdateMapMarkers();
+
+  @override
+  List<Object> get props => [];
+}
+
+class DrawRoute extends MapEvent {
+  const DrawRoute();
+
+  @override
+  List<Object> get props => [];
+}
+
+class RequestLocationPermission extends MapEvent {
+  const RequestLocationPermission();
+
+  @override
+  List<Object> get props => [];
+}
+
+class FitMapToRoute extends MapEvent {
+  const FitMapToRoute();
+
+  @override
+  List<Object> get props => [];
+}
