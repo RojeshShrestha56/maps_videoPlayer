@@ -344,7 +344,6 @@ class MapBloc extends Bloc<MapEvent, MapState> {
       ));
       add(const UpdateMapMarkers());
       add(const DrawRoute());
-      add(const FitMapToRoute());
     } catch (e) {
       emit(state.copyWith(
         status: MapStatus.error,
