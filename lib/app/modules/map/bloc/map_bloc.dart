@@ -181,29 +181,15 @@ class MapBloc extends Bloc<MapEvent, MapState> {
     ));
 
     if (state.mapController != null) {
-      await state.mapController!.clearSymbols();
+      // Update markers to show both current location and destination
+      add(const UpdateMapMarkers());
 
-      await state.mapController!.addSymbol(
-        SymbolOptions(
-          geometry: event.location,
-          iconImage: 'current_location',
-          iconSize: 1.0,
-        ),
-      );
-
-      if (state.destination != null) {
-        await state.mapController!.addSymbol(
-          SymbolOptions(
-            geometry: state.destination!,
-            iconImage: 'destination',
-            iconSize: 1.0,
-          ),
+      // Only animate camera if we don't have a destination yet
+      if (state.destination == null) {
+        await state.mapController!.animateCamera(
+          CameraUpdate.newLatLngZoom(event.location, 15.0),
         );
       }
-
-      await state.mapController!.animateCamera(
-        CameraUpdate.newLatLngZoom(event.location, 15.0),
-      );
     }
 
     if (state.hasValidLocations) {
@@ -302,26 +288,33 @@ class MapBloc extends Bloc<MapEvent, MapState> {
   ) async {
     if (state.mapController == null || !state.isMapReady) return;
 
-    await state.mapController!.clearSymbols();
+    try {
+      await state.mapController!.clearSymbols();
 
-    if (state.currentLocation != null) {
-      await state.mapController!.addSymbol(
-        SymbolOptions(
-          geometry: state.currentLocation!,
-          iconImage: 'current-location',
-          iconSize: 1.0,
-        ),
-      );
-    }
+      if (state.currentLocation != null) {
+        await state.mapController!.addSymbol(
+          SymbolOptions(
+            geometry: state.currentLocation!,
+            iconImage: 'current_location',
+            iconSize: 1.0,
+          ),
+        );
+      }
 
-    if (state.destination != null) {
-      await state.mapController!.addSymbol(
-        SymbolOptions(
-          geometry: state.destination!,
-          iconImage: 'destination',
-          iconSize: 1.0,
-        ),
-      );
+      if (state.destination != null) {
+        await state.mapController!.addSymbol(
+          SymbolOptions(
+            geometry: state.destination!,
+            iconImage: 'destination',
+            iconSize: 1.0,
+          ),
+        );
+      }
+    } catch (e) {
+      emit(state.copyWith(
+        status: MapStatus.error,
+        error: 'Error updating map markers: ${e.toString()}',
+      ));
     }
   }
 
