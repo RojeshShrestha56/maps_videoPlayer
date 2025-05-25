@@ -59,6 +59,7 @@ class MapWidget extends StatelessWidget {
             MapLibreMap(
               onMapCreated: (controller) async {
                 context.read<MapBloc>().add(MapControllerSet(controller));
+                context.read<MapBloc>().add(const RequestLocationPermission());
               },
               onStyleLoadedCallback: () async {
                 final controller = context.read<MapBloc>().state.mapController;
@@ -68,6 +69,7 @@ class MapWidget extends StatelessWidget {
                       "destination",
                       await _loadDestinationImage(),
                     );
+
                     final state = context.read<MapBloc>().state;
                     if (state.currentLocation != null) {
                       context.read<MapBloc>().add(const UpdateMapMarkers());
@@ -76,12 +78,20 @@ class MapWidget extends StatelessWidget {
                         context.read<MapBloc>().add(const DrawRoute());
                         context.read<MapBloc>().add(const FitMapToRoute());
                       }
-                    } else {
-                      context.read<MapBloc>().add(const InitializeMap());
                     }
                   } catch (e) {
                     _showMessage(context, 'Error loading map images: $e');
                   }
+                }
+              },
+              onUserLocationUpdated: (location) {
+                if (location != null) {
+                  context.read<MapBloc>().add(
+                        UpdateCurrentLocation(
+                          LatLng(location.position.latitude,
+                              location.position.longitude),
+                        ),
+                      );
                 }
               },
               onMapClick: (_, coordinates) {
@@ -94,9 +104,9 @@ class MapWidget extends StatelessWidget {
               ),
               styleString:
                   'https://api.baato.io/api/v1/styles/breeze?key=${ApiEndpoint.apiKey}',
-              myLocationEnabled: true,
-              myLocationRenderMode: MyLocationRenderMode.gps,
-              myLocationTrackingMode: MyLocationTrackingMode.trackingGps,
+              myLocationEnabled: state.currentLocation != null,
+              myLocationRenderMode: MyLocationRenderMode.normal,
+              myLocationTrackingMode: MyLocationTrackingMode.none,
             ),
             if (state.status == MapStatus.loading &&
                 state.currentLocation == null)

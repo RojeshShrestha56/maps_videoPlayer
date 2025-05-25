@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
 import 'package:geolocator/geolocator.dart';
 import 'dart:math' as math;
+import 'dart:io' show Platform;
 import '../../../data/services/api_provider.dart';
 import '../models/get_direction_model.dart';
 
@@ -76,7 +77,20 @@ class MapBloc extends Bloc<MapEvent, MapState> {
       );
 
       final location = LatLng(position.latitude, position.longitude);
-      add(UpdateCurrentLocation(location));
+
+      emit(state.copyWith(
+        currentLocation: location,
+        status: MapStatus.loaded,
+      ));
+
+      if (state.mapController != null && state.isMapReady) {
+        try {
+          await state.mapController!.animateCamera(
+            CameraUpdate.newLatLngZoom(location, 15.0),
+          );
+          add(const UpdateMapMarkers());
+        } catch (_) {}
+      }
     } catch (e) {
       emit(state.copyWith(
         status: MapStatus.error,
@@ -91,65 +105,126 @@ class MapBloc extends Bloc<MapEvent, MapState> {
   ) async {
     try {
       emit(state.copyWith(status: MapStatus.loading));
-      await _getCurrentLocation(emit);
-    } catch (e) {
-      emit(state.copyWith(
-        status: MapStatus.error,
-        error: 'Error requesting location permission: ${e.toString()}',
-      ));
-    }
-  }
-
-  Future<void> _getCurrentLocation(Emitter<MapState> emit) async {
-    try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        await Geolocator.openLocationSettings();
-        await Future.delayed(const Duration(seconds: 2));
-        serviceEnabled = await Geolocator.isLocationServiceEnabled();
+        int retryCount = 0;
+        while (!serviceEnabled && retryCount < 3) {
+          emit(state.copyWith(
+            status: MapStatus.loading,
+            error: 'Please enable location services to continue',
+          ));
+          await Future.delayed(const Duration(seconds: 1));
+          serviceEnabled = await Geolocator.isLocationServiceEnabled();
+          if (!serviceEnabled) {
+            retryCount++;
+            if (retryCount >= 3) {
+              if (Platform.isAndroid) {
+                await Geolocator.openLocationSettings();
+              } else {
+                await Geolocator.openAppSettings();
+              }
+              await Future.delayed(const Duration(seconds: 1));
+              serviceEnabled = await Geolocator.isLocationServiceEnabled();
+            }
+          }
+        }
+
         if (!serviceEnabled) {
           emit(state.copyWith(
             status: MapStatus.error,
-            error: 'Please enable location services to see your location.',
+            error:
+                'Location services must be enabled to use the map. Please enable location and try again.',
           ));
           return;
         }
       }
       LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.unableToDetermine) {
+      int permissionRetryCount = 0;
+
+      while (
+          permission == LocationPermission.denied && permissionRetryCount < 3) {
+        emit(state.copyWith(
+          status: MapStatus.loading,
+          error: permissionRetryCount == 0
+              ? 'Please allow location access to see your position on the map'
+              : 'Location permission is needed to show your position. Please allow access.',
+        ));
+
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
-          emit(state.copyWith(
-            status: MapStatus.error,
-            error:
-                'Location permission denied. Please grant permission to see your location.',
-          ));
-          return;
+          permissionRetryCount++;
         }
       }
 
-      final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
+      if (permission == LocationPermission.denied) {
+        emit(state.copyWith(
+          status: MapStatus.error,
+          error: 'Location permission is required. Please try again.',
+        ));
+        return;
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        emit(state.copyWith(
+          status: MapStatus.error,
+          error:
+              'Location permission is permanently denied. Please enable it in app settings.',
+        ));
+        await Geolocator.openAppSettings();
+        return;
+      }
+      Geolocator.getPositionStream(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 5,
+        ),
+      ).listen(
+        (Position position) {
+          add(UpdateCurrentLocation(
+            LatLng(position.latitude, position.longitude),
+          ));
+        },
+        onError: (e) {
+          emit(state.copyWith(
+            status: MapStatus.error,
+            error: 'Error getting location updates',
+          ));
+        },
       );
-
-      final location = LatLng(position.latitude, position.longitude);
-
-      emit(state.copyWith(
-        currentLocation: location,
-        status: MapStatus.loaded,
-      ));
-
-      if (state.isMapReady && state.mapController != null) {
-        await state.mapController!.animateCamera(
-          CameraUpdate.newLatLngZoom(location, 15.0),
+      try {
+        final position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+          timeLimit: const Duration(seconds: 3),
         );
-        add(const UpdateMapMarkers());
+
+        final location = LatLng(position.latitude, position.longitude);
+        emit(state.copyWith(
+          currentLocation: location,
+          status: MapStatus.loaded,
+          error: '',
+        ));
+
+        if (state.mapController != null && state.isMapReady) {
+          try {
+            await state.mapController!.updateMyLocationTrackingMode(
+              MyLocationTrackingMode.tracking,
+            );
+            await state.mapController!.animateCamera(
+              CameraUpdate.newLatLngZoom(location, 15.0),
+            );
+            add(const UpdateMapMarkers());
+          } catch (_) {}
+        }
+      } catch (_) {
+        emit(state.copyWith(
+          status: MapStatus.loading,
+          error: 'Getting your location...',
+        ));
       }
     } catch (e) {
       emit(state.copyWith(
         status: MapStatus.error,
-        error: 'Error getting location: ${e.toString()}',
+        error: 'Error accessing location',
       ));
     }
   }
@@ -204,23 +279,40 @@ class MapBloc extends Bloc<MapEvent, MapState> {
     UpdateCurrentLocation event,
     Emitter<MapState> emit,
   ) async {
-    emit(state.copyWith(
-      currentLocation: event.location,
-      status: MapStatus.loaded,
-    ));
+    try {
+      final bool isFirstLocation = state.currentLocation == null;
+      emit(state.copyWith(
+        currentLocation: event.location,
+        status: MapStatus.loaded,
+        error: '',
+      ));
 
-    if (state.mapController != null) {
-      add(const UpdateMapMarkers());
-      if (state.destination == null) {
-        await state.mapController!.animateCamera(
-          CameraUpdate.newLatLngZoom(event.location, 15.0),
-        );
+      if (state.mapController != null && state.isMapReady) {
+        try {
+          await state.mapController!.updateMyLocationTrackingMode(
+            MyLocationTrackingMode.tracking,
+          );
+        } catch (_) {}
+        add(const UpdateMapMarkers());
+        if (isFirstLocation) {
+          try {
+            await state.mapController!.animateCamera(
+              CameraUpdate.newLatLngZoom(event.location, 15.0),
+            );
+          } catch (_) {}
+        } else if (state.destination == null) {
+          try {
+            await state.mapController!.animateCamera(
+              CameraUpdate.newLatLng(event.location),
+            );
+          } catch (_) {}
+        }
       }
-    }
 
-    if (state.hasValidLocations) {
-      add(const GetDirectionData());
-    }
+      if (state.hasValidLocations) {
+        add(const GetDirectionData());
+      }
+    } catch (_) {}
   }
 
   Future<void> _onUpdateDestination(
@@ -318,8 +410,6 @@ class MapBloc extends Bloc<MapEvent, MapState> {
 
     try {
       await state.mapController!.clearSymbols();
-
-      // Add current location marker if available
       if (state.currentLocation != null) {
         try {
           await state.mapController!.addSymbol(
