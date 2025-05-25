@@ -10,6 +10,12 @@ class VideoState extends Equatable {
   final Duration currentPosition;
   final Duration totalDuration;
   final bool isBuffering;
+  final VideoPlayerController? controller;
+  final List<VideoModel> videos;
+  final bool hasCompletedThirdVideo;
+  static const String videoIndexKey = 'video_index';
+  static const String videoPositionKey = 'video_position';
+  static const String hasCompletedThirdVideoKey = 'completed_third_video';
 
   const VideoState({
     this.status = VideoStatus.initial,
@@ -19,6 +25,9 @@ class VideoState extends Equatable {
     this.currentPosition = Duration.zero,
     this.totalDuration = Duration.zero,
     this.isBuffering = false,
+    this.controller,
+    this.videos = const [],
+    this.hasCompletedThirdVideo = false,
   });
 
   VideoState copyWith({
@@ -29,6 +38,9 @@ class VideoState extends Equatable {
     Duration? currentPosition,
     Duration? totalDuration,
     bool? isBuffering,
+    VideoPlayerController? controller,
+    List<VideoModel>? videos,
+    bool? hasCompletedThirdVideo,
   }) {
     return VideoState(
       status: status ?? this.status,
@@ -38,6 +50,10 @@ class VideoState extends Equatable {
       currentPosition: currentPosition ?? this.currentPosition,
       totalDuration: totalDuration ?? this.totalDuration,
       isBuffering: isBuffering ?? this.isBuffering,
+      controller: controller ?? this.controller,
+      videos: videos ?? this.videos,
+      hasCompletedThirdVideo:
+          hasCompletedThirdVideo ?? this.hasCompletedThirdVideo,
     );
   }
 
@@ -71,5 +87,8 @@ class VideoState extends Equatable {
         currentPosition,
         totalDuration,
         isBuffering,
+        controller,
+        videos,
+        hasCompletedThirdVideo,
       ];
 }

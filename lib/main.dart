@@ -6,7 +6,6 @@ import 'app/modules/video/bloc/video_bloc.dart';
 import 'app/screens/main_screen.dart';
 
 void main() {
-  // Ensure Flutter bindings are initialized
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const MyApp());
 }
@@ -23,7 +22,7 @@ class MyApp extends StatelessWidget {
         BlocProvider(
           create: (context) => MapBloc(apiProvider: apiProvider),
         ),
-        BlocProvider(create: (context) => VideoBloc()),
+        BlocProvider(create: (context) => VideoBloc(apiProvider: apiProvider)),
       ],
       child: MaterialApp(
         title: 'Baato Maps Demo',

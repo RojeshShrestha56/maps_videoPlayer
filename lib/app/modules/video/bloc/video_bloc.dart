@@ -2,20 +2,39 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:video_player/video_player.dart';
 import 'package:equatable/equatable.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/widgets.dart';
 import '../models/video_model.dart';
+import '../../../data/services/api_provider.dart';
 
 part 'video_event.dart';
 part 'video_state.dart';
 
-class VideoBloc extends Bloc<VideoEvent, VideoState> {
-  VideoPlayerController? controller;
-  late List<VideoModel> videos;
-  bool hasCompletedThirdVideo = false;
-  static const String _videoIndexKey = 'video_index';
-  static const String _videoPositionKey = 'video_position';
-  static const String _hasCompletedThirdVideoKey = 'completed_third_video';
+class VideoBloc extends Bloc<VideoEvent, VideoState>
+    with WidgetsBindingObserver {
+  final ApiProvider _apiProvider;
 
-  VideoBloc() : super(const VideoState()) {
+  VideoBloc({required ApiProvider apiProvider})
+      : _apiProvider = apiProvider,
+        super(VideoState(videos: [
+          const VideoModel(
+            title: 'First Video',
+            path: 'assets/videos/video1.mp4',
+            duration: Duration(seconds: 30),
+            pauseAt: Duration(seconds: 15),
+          ),
+          const VideoModel(
+            title: 'Second Video',
+            path: 'assets/videos/video2.mp4',
+            duration: Duration(seconds: 30),
+            pauseAt: Duration(seconds: 20),
+          ),
+          const VideoModel(
+            title: 'Third Video',
+            path: 'assets/videos/video3.mp4',
+            duration: Duration(seconds: 30),
+            pauseAt: Duration.zero,
+          ),
+        ])) {
     on<InitializeVideo>(_onInitializeVideo);
     on<PlayVideo>(_onPlayVideo);
     on<PauseVideo>(_onPauseVideo);
@@ -26,104 +45,100 @@ class VideoBloc extends Bloc<VideoEvent, VideoState> {
     on<SavePlaybackState>(_onSavePlaybackState);
     on<RestorePlaybackState>(_onRestorePlaybackState);
     on<VideoError>(_onVideoError);
-    _initializeVideoList();
+
+    WidgetsBinding.instance.addObserver(this);
   }
 
-  void _initializeVideoList() {
-    videos = [
-      const VideoModel(
-        title: 'First Video',
-        path: 'assets/videos/video1.mp4',
-        duration: Duration(seconds: 30),
-        pauseAt: Duration(seconds: 15),
-      ),
-      const VideoModel(
-        title: 'Second Video',
-        path: 'assets/videos/video2.mp4',
-        duration: Duration(seconds: 30),
-        pauseAt: Duration(seconds: 20),
-      ),
-      const VideoModel(
-        title: 'Third Video',
-        path: 'assets/videos/video3.mp4',
-        duration: Duration(seconds: 30),
-        pauseAt: Duration(seconds: 0),
-      ),
-    ];
+  String formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final minutes = twoDigits(duration.inMinutes.remainder(60));
+    final seconds = twoDigits(duration.inSeconds.remainder(60));
+    return '$minutes:$seconds';
   }
 
-  Future<void> _onInitializeVideo(
-    InitializeVideo event,
-    Emitter<VideoState> emit,
-  ) async {
-    try {
-      emit(state.copyWith(status: VideoStatus.loading));
-      final firstVideo = videos.first;
-      await _initializeVideoController(firstVideo.path);
-      emit(state.copyWith(
-        status: VideoStatus.playing,
-        currentVideo: firstVideo,
-        currentVideoIndex: 0,
-        totalDuration: controller!.value.duration,
-      ));
-      controller!.play();
-    } catch (e) {
-      add(VideoError('Error initializing video: ${e.toString()}'));
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      add(const SavePlaybackState());
+    } else if (state == AppLifecycleState.resumed) {
+      add(const RestorePlaybackState());
     }
   }
 
-  Future<void> _initializeVideoController(String videoPath) async {
+  Future<void> _initializeVideoController(
+      String videoPath, Emitter<VideoState> emit) async {
     try {
-      await controller?.dispose();
-      controller = VideoPlayerController.asset(videoPath);
-      await controller!.initialize();
-      controller!.addListener(_videoListener);
+      if (state.controller != null) {
+        await state.controller!.dispose();
+        emit(state.copyWith(controller: null));
+      }
+
+      final controller = VideoPlayerController.asset(videoPath);
+      await controller.initialize();
+
+      final size = controller.value.size;
+      final width = size.width;
+      final height = size.height;
+
+      if (width > 1920 || height > 1080) {
+        throw Exception(
+            'Video resolution ${width.toInt()}x${height.toInt()} exceeds device capabilities. Please use videos with maximum 1080p resolution.');
+      }
+
+      controller.addListener(() => _videoListener(emit));
+      emit(state.copyWith(controller: controller));
     } catch (e) {
       throw Exception('Failed to initialize video: ${e.toString()}');
     }
   }
 
-  void _videoListener() {
-    if (controller == null || !controller!.value.isInitialized) return;
+  void _videoListener(Emitter<VideoState> emit) {
+    if (state.controller == null || !state.controller!.value.isInitialized)
+      return;
 
     add(UpdateVideoPosition(
-      position: controller!.value.position,
-      duration: controller!.value.duration,
+      position: state.controller!.value.position,
+      duration: state.controller!.value.duration,
     ));
 
-    if (state.atPausePoint && controller!.value.isPlaying) {
-      add(const PauseVideo());
+    if (!state.hasCompletedThirdVideo &&
+        state.currentVideoIndex < 2 &&
+        state.atPausePoint &&
+        state.controller!.value.isPlaying) {
+      state.controller!.pause();
+      add(SwitchToVideo(state.currentVideoIndex + 1));
+      return;
     }
 
-    if (controller!.value.position >=
-        controller!.value.duration - const Duration(milliseconds: 100)) {
+    if (state.controller!.value.position >=
+        state.controller!.value.duration - const Duration(milliseconds: 100)) {
       add(const VideoCompleted());
     }
   }
 
   void _onPlayVideo(PlayVideo event, Emitter<VideoState> emit) {
-    if (controller == null || !controller!.value.isInitialized) return;
+    if (state.controller == null || !state.controller!.value.isInitialized)
+      return;
 
     if (state.atPausePoint) {
-      if (state.currentVideoIndex < videos.length - 1) {
-        add(SwitchToVideo(state.currentVideoIndex + 1));
-        return;
-      }
+      return;
     }
 
-    controller!.play();
+    state.controller!.play();
     emit(state.copyWith(status: VideoStatus.playing));
   }
 
   void _onPauseVideo(PauseVideo event, Emitter<VideoState> emit) {
-    if (controller == null || !controller!.value.isInitialized) return;
-    controller!.pause();
+    if (state.controller == null || !state.controller!.value.isInitialized)
+      return;
+    state.controller!.pause();
     emit(state.copyWith(status: VideoStatus.paused));
   }
 
   void _onSeekVideo(SeekVideo event, Emitter<VideoState> emit) {
-    if (controller == null || !controller!.value.isInitialized) return;
-    controller!.seekTo(event.position);
+    if (state.controller == null || !state.controller!.value.isInitialized)
+      return;
+    state.controller!.seekTo(event.position);
   }
 
   void _onUpdateVideoPosition(
@@ -142,13 +157,19 @@ class VideoBloc extends Bloc<VideoEvent, VideoState> {
   ) async {
     final currentIndex = state.currentVideoIndex;
 
-    if (currentIndex == 2) {
-      hasCompletedThirdVideo = true;
-      add(const SwitchToVideo(1));
-    } else if (currentIndex == 1 && hasCompletedThirdVideo) {
-      add(const SwitchToVideo(0));
-    } else if (currentIndex < videos.length - 1) {
-      add(SwitchToVideo(currentIndex + 1));
+    if (!state.hasCompletedThirdVideo) {
+      if (currentIndex < 2) {
+        add(SwitchToVideo(currentIndex + 1));
+      } else if (currentIndex == 2) {
+        emit(state.copyWith(hasCompletedThirdVideo: true));
+        add(const SwitchToVideo(1));
+      }
+    } else {
+      if (currentIndex == 1) {
+        add(const SwitchToVideo(0));
+      } else if (currentIndex == 0) {
+        add(const SwitchToVideo(1));
+      }
     }
   }
 
@@ -156,20 +177,31 @@ class VideoBloc extends Bloc<VideoEvent, VideoState> {
     SwitchToVideo event,
     Emitter<VideoState> emit,
   ) async {
-    if (event.index < 0 || event.index >= videos.length) return;
+    if (event.index < 0 || event.index >= state.videos.length) return;
 
     try {
-      final nextVideo = videos[event.index];
-      await _initializeVideoController(nextVideo.path);
+      final nextVideo = state.videos[event.index];
+
       emit(state.copyWith(
+        status: VideoStatus.loading,
         currentVideo: nextVideo,
         currentVideoIndex: event.index,
-        status: VideoStatus.playing,
         error: '',
         currentPosition: Duration.zero,
-        totalDuration: controller!.value.duration,
       ));
-      controller!.play();
+
+      await _initializeVideoController(nextVideo.path, emit);
+
+      if (state.hasCompletedThirdVideo && event.index == 0) {
+        await state.controller!.seekTo(nextVideo.pauseAt);
+      }
+
+      emit(state.copyWith(
+        status: VideoStatus.playing,
+        totalDuration: state.controller!.value.duration,
+      ));
+
+      state.controller!.play();
     } catch (e) {
       add(VideoError('Error switching video: ${e.toString()}'));
     }
@@ -180,15 +212,17 @@ class VideoBloc extends Bloc<VideoEvent, VideoState> {
     Emitter<VideoState> emit,
   ) async {
     try {
-      if (controller == null || !controller!.value.isInitialized) return;
+      if (state.controller == null || !state.controller!.value.isInitialized)
+        return;
 
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt(_videoIndexKey, state.currentVideoIndex);
+      await prefs.setInt(VideoState.videoIndexKey, state.currentVideoIndex);
       await prefs.setInt(
-        _videoPositionKey,
-        controller!.value.position.inMilliseconds,
+        VideoState.videoPositionKey,
+        state.controller!.value.position.inMilliseconds,
       );
-      await prefs.setBool(_hasCompletedThirdVideoKey, hasCompletedThirdVideo);
+      await prefs.setBool(
+          VideoState.hasCompletedThirdVideoKey, state.hasCompletedThirdVideo);
     } catch (e) {
       add(VideoError('Error saving playback state: ${e.toString()}'));
     }
@@ -201,32 +235,33 @@ class VideoBloc extends Bloc<VideoEvent, VideoState> {
     try {
       final prefs = await SharedPreferences.getInstance();
 
-      hasCompletedThirdVideo =
-          prefs.getBool(_hasCompletedThirdVideoKey) ?? false;
+      final hasCompletedThirdVideo =
+          prefs.getBool(VideoState.hasCompletedThirdVideoKey) ?? false;
 
-      final savedIndex = prefs.getInt(_videoIndexKey);
-      if (savedIndex == null || savedIndex >= videos.length) {
+      final savedIndex = prefs.getInt(VideoState.videoIndexKey);
+      if (savedIndex == null || savedIndex >= state.videos.length) {
         add(const InitializeVideo());
         return;
       }
 
-      final savedPosition = prefs.getInt(_videoPositionKey);
+      final savedPosition = prefs.getInt(VideoState.videoPositionKey);
       if (savedPosition == null) {
         add(const InitializeVideo());
         return;
       }
 
-      final savedVideo = videos[savedIndex];
-      await _initializeVideoController(savedVideo.path);
+      final savedVideo = state.videos[savedIndex];
+      await _initializeVideoController(savedVideo.path, emit);
 
       emit(state.copyWith(
         status: VideoStatus.paused,
         currentVideo: savedVideo,
         currentVideoIndex: savedIndex,
-        totalDuration: controller!.value.duration,
+        totalDuration: state.controller!.value.duration,
+        hasCompletedThirdVideo: hasCompletedThirdVideo,
       ));
 
-      await controller!.seekTo(Duration(milliseconds: savedPosition));
+      await state.controller!.seekTo(Duration(milliseconds: savedPosition));
     } catch (e) {
       add(VideoError('Error restoring playback state: ${e.toString()}'));
       add(const InitializeVideo());
@@ -238,11 +273,38 @@ class VideoBloc extends Bloc<VideoEvent, VideoState> {
       status: VideoStatus.error,
       error: event.message,
     ));
+
+    if (state.currentVideoIndex < state.videos.length - 1) {
+      add(SwitchToVideo(state.currentVideoIndex + 1));
+    }
+  }
+
+  Future<void> _onInitializeVideo(
+    InitializeVideo event,
+    Emitter<VideoState> emit,
+  ) async {
+    try {
+      emit(state.copyWith(status: VideoStatus.loading));
+      final firstVideo = state.videos.first;
+      await _initializeVideoController(firstVideo.path, emit);
+      emit(state.copyWith(
+        status: VideoStatus.playing,
+        currentVideo: firstVideo,
+        currentVideoIndex: 0,
+        totalDuration: state.controller!.value.duration,
+      ));
+      state.controller!.play();
+    } catch (e) {
+      add(VideoError('Error initializing video: ${e.toString()}'));
+    }
   }
 
   @override
-  Future<void> close() {
-    controller?.dispose();
+  Future<void> close() async {
+    WidgetsBinding.instance.removeObserver(this);
+    if (state.controller != null) {
+      await state.controller!.dispose();
+    }
     return super.close();
   }
 }

@@ -26,7 +26,7 @@ class MapWidget extends StatelessWidget {
     final canvas = Canvas(recorder);
     const size = Size(24, 24);
     final paint = Paint()
-      ..color = Colors.blue.withOpacity(0.2)
+      ..color = Colors.blue.withValues(alpha: 0.2)
       ..style = PaintingStyle.fill;
 
     canvas.drawCircle(
