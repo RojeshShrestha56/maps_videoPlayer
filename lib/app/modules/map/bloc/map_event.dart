@@ -82,3 +82,10 @@ class FitMapToRoute extends MapEvent {
   @override
   List<Object> get props => [];
 }
+
+class MapDisposed extends MapEvent {
+  const MapDisposed();
+
+  @override
+  List<Object> get props => [];
+}

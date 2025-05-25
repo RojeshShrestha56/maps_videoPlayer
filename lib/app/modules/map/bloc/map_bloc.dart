@@ -26,6 +26,7 @@ class MapBloc extends Bloc<MapEvent, MapState> {
     on<DrawRoute>(_onDrawRoute);
     on<RequestLocationPermission>(_onRequestLocationPermission);
     on<FitMapToRoute>(_onFitMapToRoute);
+    on<MapDisposed>(_onMapDisposed);
   }
 
   void _onInitializeMap(InitializeMap event, Emitter<MapState> emit) async {
@@ -153,19 +154,49 @@ class MapBloc extends Bloc<MapEvent, MapState> {
     }
   }
 
-  void _onMapControllerSet(MapControllerSet event, Emitter<MapState> emit) {
+  void _onMapDisposed(MapDisposed event, Emitter<MapState> emit) {
     emit(state.copyWith(
-      mapController: event.controller,
-      isMapReady: true,
+      mapController: null,
+      isMapReady: false,
     ));
+  }
 
-    if (state.currentLocation != null) {
-      event.controller.animateCamera(
-        CameraUpdate.newLatLngZoom(state.currentLocation!, 15.0),
-      );
-      add(const UpdateMapMarkers());
-    } else {
-      add(const InitializeMap());
+  void _onMapControllerSet(MapControllerSet event, Emitter<MapState> emit) {
+    try {
+      if (state.mapController != null) {
+        try {
+          state.mapController!.clearSymbols();
+          state.mapController!.clearLines();
+        } catch (_) {}
+      }
+
+      emit(state.copyWith(
+        mapController: event.controller,
+        isMapReady: true,
+        status: MapStatus.loaded,
+      ));
+      Future.microtask(() async {
+        if (state.currentLocation != null) {
+          try {
+            await event.controller.animateCamera(
+              CameraUpdate.newLatLngZoom(state.currentLocation!, 15.0),
+            );
+            add(const UpdateMapMarkers());
+
+            if (state.destination != null && state.directionData.isNotEmpty) {
+              add(const DrawRoute());
+              add(const FitMapToRoute());
+            }
+          } catch (_) {}
+        } else {
+          add(const InitializeMap());
+        }
+      });
+    } catch (e) {
+      emit(state.copyWith(
+        status: MapStatus.error,
+        error: 'Error setting up map: ${e.toString()}',
+      ));
     }
   }
 
@@ -281,29 +312,35 @@ class MapBloc extends Bloc<MapEvent, MapState> {
     UpdateMapMarkers event,
     Emitter<MapState> emit,
   ) async {
-    if (state.mapController == null || !state.isMapReady) return;
+    if (state.mapController == null || !state.isMapReady) {
+      return;
+    }
 
     try {
       await state.mapController!.clearSymbols();
 
+      // Add current location marker if available
       if (state.currentLocation != null) {
-        await state.mapController!.addSymbol(
-          SymbolOptions(
-            geometry: state.currentLocation!,
-            iconImage: 'current_location',
-            iconSize: 1.0,
-          ),
-        );
+        try {
+          await state.mapController!.addSymbol(
+            SymbolOptions(
+              geometry: state.currentLocation!,
+              iconImage: 'current_location',
+              iconSize: 1.0,
+            ),
+          );
+        } catch (_) {}
       }
-
       if (state.destination != null) {
-        await state.mapController!.addSymbol(
-          SymbolOptions(
-            geometry: state.destination!,
-            iconImage: 'destination',
-            iconSize: 1.0,
-          ),
-        );
+        try {
+          await state.mapController!.addSymbol(
+            SymbolOptions(
+              geometry: state.destination!,
+              iconImage: 'destination',
+              iconSize: 1.0,
+            ),
+          );
+        } catch (_) {}
       }
     } catch (e) {
       emit(state.copyWith(
@@ -326,15 +363,18 @@ class MapBloc extends Bloc<MapEvent, MapState> {
       if (route.encodedPolyline.isEmpty) {
         return;
       }
-      final List<LatLng> points = _decodePolyline(route.encodedPolyline);
-      await state.mapController!.addLine(
-        LineOptions(
-          geometry: points,
-          lineColor: '#2196F3',
-          lineWidth: 4.0,
-          lineOpacity: 0.8,
-        ),
-      );
+
+      try {
+        final List<LatLng> points = _decodePolyline(route.encodedPolyline);
+        await state.mapController!.addLine(
+          LineOptions(
+            geometry: points,
+            lineColor: '#2196F3',
+            lineWidth: 4.0,
+            lineOpacity: 0.8,
+          ),
+        );
+      } catch (_) {}
     } catch (e) {
       emit(state.copyWith(
         status: MapStatus.error,
@@ -349,29 +389,32 @@ class MapBloc extends Bloc<MapEvent, MapState> {
         !state.isMapReady) {
       return;
     }
+    try {
+      final bounds = LatLngBounds(
+        southwest: LatLng(
+          math.min(
+              state.currentLocation!.latitude, state.destination!.latitude),
+          math.min(
+              state.currentLocation!.longitude, state.destination!.longitude),
+        ),
+        northeast: LatLng(
+          math.max(
+              state.currentLocation!.latitude, state.destination!.latitude),
+          math.max(
+              state.currentLocation!.longitude, state.destination!.longitude),
+        ),
+      );
 
-    final bounds = LatLngBounds(
-      southwest: LatLng(
-        math.min(state.currentLocation!.latitude, state.destination!.latitude),
-        math.min(
-            state.currentLocation!.longitude, state.destination!.longitude),
-      ),
-      northeast: LatLng(
-        math.max(state.currentLocation!.latitude, state.destination!.latitude),
-        math.max(
-            state.currentLocation!.longitude, state.destination!.longitude),
-      ),
-    );
-
-    state.mapController!.animateCamera(
-      CameraUpdate.newLatLngBounds(
-        bounds,
-        left: 50,
-        right: 50,
-        top: 50,
-        bottom: 50,
-      ),
-    );
+      state.mapController!.animateCamera(
+        CameraUpdate.newLatLngBounds(
+          bounds,
+          left: 50,
+          right: 50,
+          top: 50,
+          bottom: 50,
+        ),
+      );
+    } catch (_) {}
   }
 
   List<LatLng> _decodePolyline(String encoded) {

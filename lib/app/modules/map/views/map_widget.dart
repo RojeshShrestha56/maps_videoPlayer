@@ -58,21 +58,27 @@ class MapWidget extends StatelessWidget {
           children: [
             MapLibreMap(
               onMapCreated: (controller) async {
-                context.read<MapBloc>()..add(MapControllerSet(controller));
+                context.read<MapBloc>().add(MapControllerSet(controller));
               },
               onStyleLoadedCallback: () async {
                 final controller = context.read<MapBloc>().state.mapController;
                 if (controller != null) {
                   try {
-                    // await controller.addImage(
-                    //   "current_location",
-                    //   await _loadCurrentLocationImage(),
-                    // );
                     await controller.addImage(
                       "destination",
                       await _loadDestinationImage(),
                     );
-                    context.read<MapBloc>().add(const InitializeMap());
+                    final state = context.read<MapBloc>().state;
+                    if (state.currentLocation != null) {
+                      context.read<MapBloc>().add(const UpdateMapMarkers());
+                      if (state.destination != null &&
+                          state.directionData.isNotEmpty) {
+                        context.read<MapBloc>().add(const DrawRoute());
+                        context.read<MapBloc>().add(const FitMapToRoute());
+                      }
+                    } else {
+                      context.read<MapBloc>().add(const InitializeMap());
+                    }
                   } catch (e) {
                     _showMessage(context, 'Error loading map images: $e');
                   }
