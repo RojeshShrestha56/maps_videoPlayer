@@ -21,33 +21,35 @@ class MapWidget extends StatelessWidget {
     return data.buffer.asUint8List();
   }
 
-  // Future<Uint8List> _loadCurrentLocationImage() async {
-  //   final recorder = ui.PictureRecorder();
-  //   final canvas = Canvas(recorder);
-  //   const size = Size(24, 24);
-  //   final paint = Paint()
-  //     ..color = Colors.blue
-  //     ..style = PaintingStyle.fill;
-  //   canvas.drawCircle(
-  //     Offset(size.width / 2, size.height / 2),
-  //     size.width / 2,
-  //     paint..color = Colors.blue.withOpacity(0.2),
-  //   );
-  //
-  //   canvas.drawCircle(
-  //     Offset(size.width / 2, size.height / 2),
-  //     size.width / 4,
-  //     paint..color = Colors.blue,
-  //   );
-  //
-  //   final picture = recorder.endRecording();
-  //   final img = await picture.toImage(
-  //     size.width.toInt(),
-  //     size.height.toInt(),
-  //   );
-  //   final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
-  //   return byteData!.buffer.asUint8List();
-  // }
+  Future<Uint8List> _loadCurrentLocationImage() async {
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    const size = Size(24, 24);
+    final paint = Paint()
+      ..color = Colors.blue.withOpacity(0.2)
+      ..style = PaintingStyle.fill;
+
+    canvas.drawCircle(
+      Offset(size.width / 2, size.height / 2),
+      size.width / 2,
+      paint,
+    );
+
+    paint.color = Colors.blue;
+    canvas.drawCircle(
+      Offset(size.width / 2, size.height / 2),
+      size.width / 4,
+      paint,
+    );
+
+    final picture = recorder.endRecording();
+    final img = await picture.toImage(
+      size.width.toInt(),
+      size.height.toInt(),
+    );
+    final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
+    return byteData!.buffer.asUint8List();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -69,11 +71,16 @@ class MapWidget extends StatelessWidget {
                 if (controller != null) {
                   try {
                     await controller.addImage(
+                      "current_location",
+                      await _loadCurrentLocationImage(),
+                    );
+                    await controller.addImage(
                       "destination",
                       await _loadDestinationImage(),
                     );
+                    context.read<MapBloc>().add(const InitializeMap());
                   } catch (e) {
-                    _showMessage(context, '$e');
+                    _showMessage(context, 'Error loading map images: $e');
                   }
                 }
               },
@@ -87,9 +94,9 @@ class MapWidget extends StatelessWidget {
               ),
               styleString:
                   'https://api.baato.io/api/v1/styles/breeze?key=${ApiEndpoint.apiKey}',
-              myLocationEnabled: true,
-              myLocationRenderMode: MyLocationRenderMode.gps,
-              myLocationTrackingMode: MyLocationTrackingMode.trackingGps,
+              myLocationEnabled: false,
+              myLocationRenderMode: MyLocationRenderMode.normal,
+              myLocationTrackingMode: MyLocationTrackingMode.none,
             ),
             if (state.status == MapStatus.loading &&
                 state.currentLocation == null)

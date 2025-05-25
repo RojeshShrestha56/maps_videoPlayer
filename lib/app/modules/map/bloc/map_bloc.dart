@@ -186,7 +186,7 @@ class MapBloc extends Bloc<MapEvent, MapState> {
       await state.mapController!.addSymbol(
         SymbolOptions(
           geometry: event.location,
-          iconImage: 'current-location',
+          iconImage: 'current_location',
           iconSize: 1.0,
         ),
       );
